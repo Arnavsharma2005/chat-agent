@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat agent</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 16px; }
+  #log { min-height: 60vh; }
+  .msg { padding: 10px 14px; margin: 8px 0; border-radius: 10px; white-space: pre-wrap; }
+  .user { background: #e8f0fe; }
+  .assistant { background: #f3f3f3; }
+  .meta { font-size: 12px; color: #666; margin-top: 4px; }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; padding: 10px; font-size: 16px; }
+  button { padding: 10px 16px; font-size: 16px; }
+</style>
+</head>
+<body>
+<h1>Chat agent</h1>
+<div id="log"></div>
+<form id="form">
+  <input id="input" placeholder="Ask anything..." autocomplete="off" autofocus>
+  <button>Send</button>
+</form>
+<script>
+  const log = document.getElementById("log");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const history = []; // full conversation, sent to the server on every turn
+
+  function add(role, text, meta) {
+    const div = document.createElement("div");
+    div.className = "msg " + role;
+    div.textContent = text; // textContent, not innerHTML, so model output cannot inject HTML
+    if (meta) {
+      const m = document.createElement("div");
+      m.className = "meta";
+      m.textContent = meta;
+      div.appendChild(m);
+    }
+    log.appendChild(div);
+    return div;
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    add("user", text);
+    history.push({ role: "user", content: text });
+    const pending = add("assistant", "Thinking...");
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      pending.remove();
+      add("assistant", data.reply, data.searches.length ? "Searched: " + data.searches.join(" | ") : "");
+      history.push({ role: "assistant", content: data.reply });
+    } catch (err) {
+      pending.textContent = "Error: " + err.message;
+      history.pop(); // drop the failed user turn so a retry does not duplicate it
+    }
+  });
+</script>
+</body>
+</html>
